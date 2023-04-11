@@ -1,71 +1,92 @@
 import json
-import os
 import uuid
+from pathlib import Path
+import subprocess
 
-def get_server_info():
-    server_type = input("Enter the server type (local or external): ")
-    server_name = input("Enter the server name (e.g., localnode1, extnode1): ")
-    ip_address = input(f"Enter the IP address for {server_name}: ")
-    dns = input(f"Enter the DNS name for {server_name}: ")
 
-    return {
-        'server_type': server_type,
-        'server_name': server_name,
-        'ip': ip_address,
-        'dns': dns,
-    }
+def prompt_user():
+    node_type = input("Enter node type (localnode/extnode): ")
+    node_number = int(input("Enter node number: "))
+    hostname = input("Enter hostname: ")
+    ip_address = input("Enter IP address: ")
+    domain = input("Enter domain: ")
+    user_uuid = input("Enter UUID (leave empty to generate a new one): ")
+    if not user_uuid:
+        user_uuid = str(uuid.uuid4())
+        print(f"Generated UUID: {user_uuid}")
+    return node_type, node_number, hostname, ip_address, domain, user_uuid
 
-def create_folders(server_name):
-    os.makedirs(f'config/{server_name}/docker', exist_ok=True)
-    os.makedirs(f'config/{server_name}/caddy', exist_ok=True)
 
-def create_caddyfile(server_name, server_info):
-    caddyfile_content = f"""https://{server_info['dns']} {{
-    reverse_proxy * 127.0.0.1:10000
-}}
-"""
+def create_node_dirs(node_type, node_number):
+    node_name = f"{node_type}{node_number}"
+    base_path = Path("config") / node_name
+    caddy_path = base_path / "caddy"
+    docker_path = base_path / "docker"
 
-    with open(f'config/{server_name}/caddy/Caddyfile', 'w') as f:
-        f.write(caddyfile_content)
+    base_path.mkdir(parents=True, exist_ok=True)
+    caddy_path.mkdir(parents=True, exist_ok=True)
+    docker_path.mkdir(parents=True, exist_ok=True)
 
-def create_xray_config(server_name, server_info):
-    with open('config/base_xray_config.json', 'r') as f:
-        xray_config = json.load(f)
+    return node_name, base_path, caddy_path, docker_path
 
-    for inbound in xray_config['inbounds']:
-        if 'settings' in inbound and 'clients' in inbound['settings']:
-            for client in inbound['settings']['clients']:
-                client['id'] = str(uuid.uuid4())
 
-    with open(f'config/{server_name}/docker/config.json', 'w') as f:
-        json.dump(xray_config, f, indent=2)
+def create_caddyfile(caddy_path, hostname, domain):
+    caddyfile_path = caddy_path / "Caddyfile"
+    if not caddyfile_path.exists():
+        with caddyfile_path.open("w") as f:
+            f.write(f"{domain} {{\n")
+            f.write("  reverse_proxy localhost:10000\n")
+            f.write("  encode zstd gzip\n")
+            f.write("  tls internal\n")
+            f.write("}\n")
 
-def update_ansible_inventory(ansible_inventory_file, server_info, server_group):
-    with open(ansible_inventory_file, 'r') as f:
-        inventory_content = f.readlines()
 
-    updated_content = []
-    server_entry = f"{server_info['server_name']} ansible_host={server_info['ip']}\n"
-    found_group = False
+def create_docker_config(docker_path, node_type, hostname, ip_address, domain, user_uuid):
+    config_path = docker_path / "config.json"
+    if not config_path.exists():
+        (Path("config") / "base_xray_config.json").copy(config_path)
 
-    for line in inventory_content:
-        if line.strip() == f"[{server_group}]":
-            found_group = True
-        elif found_group and server_info['server_name'] in line:
-            line = server_entry
-            found_group = False
+        with config_path.open("r") as f:
+            config = json.load(f)
 
-        updated_content.append(line)
+        config["inbounds"][0]["settings"]["clients"][0]["id"] = user_uuid
+        config["inbounds"][0]["settings"]["clients"][0]["email"] = f"{hostname}@{domain}"
+        config["inbounds"][0]["streamSettings"]["wsSettings"]["headers"]["Host"] = domain
+        config["inbounds"][0]["streamSettings"]["xtlsSettings"]["servername"] = domain
 
-    with open(ansible_inventory_file, 'w') as f:
-        f.writelines(updated_content)
+        if node_type == "localnode":
+            config["routing"]["rules"][0]["outboundTag"] = "direct"
+        else:
+            config["routing"]["rules"][0]["outboundTag"] = "proxy"
+            config["outbounds"][0]["settings"]["vnext"][0]["address"] = ip_address
 
-server_info = get_server_info()
+        with config_path.open("w") as f:
+            json.dump(config, f, indent=2)
 
-server_group = "local_nodes" if server_info['server_type'] == "local" else "external_nodes"
-ansible_inventory_file = "ansible/inventory.ini"
 
-create_folders(server_info['server_name'])
-create_caddyfile(server_info['server_name'], server_info)
-create_xray_config(server_info['server_name'], server_info)
-update_ansible_inventory(ansible_inventory_file, server_info, server_group)
+def install_bbr():
+    install = input("Do you want to install BBR? (y/n): ")
+    if install.lower() == 'y':
+        subprocess.run(["wget", "--no-check-certificate",
+                       "https://github.com/teddysun/across/raw/master/bbr.sh"])
+        subprocess.run(["chmod", "+x", "bbr.sh"])
+        subprocess.run(["./bbr.sh"], check=True)
+
+
+def main():
+    while True:
+        node_type, node_number, hostname, ip_address, domain, user_uuid = prompt_user()
+        node_name, base_path, caddy_path, docker_path = create_node_dirs(
+            node_type, node_number)
+        create_caddyfile(caddy_path, hostname, domain)
+        create_docker_config(docker_path, node_type,
+                             hostname, ip_address, domain, user_uuid)
+        install_bbr()
+
+        create_another = input("Do you want to create another node? (y/n): ")
+        if create_another.lower() != 'y':
+            break
+
+
+if __name__ == "__main__":
+    main()
