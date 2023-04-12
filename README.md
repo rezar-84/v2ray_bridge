@@ -1,59 +1,44 @@
-# Anti-Censorship V2Ray/Xray Deployment
+# v2ray_bridge
 
-This project helps set up V2Ray/Xray nodes with Caddy reverse proxy to bypass censorship and DPI filtering in restricted regions.
+This repository contains a Python script that helps you set up an Xray bridge or upstream node with optional Caddy integration.
 
-## Project Structure
+## Prerequisites
 
-<pre>
-.
-├── ansible
-│   ├── inventory.ini
-│   └── ...
-├── config
-│   ├── base_xray_config.json
-│   ├── localnode1
-│   │   ├── caddy
-│   │   │   └── Caddyfile
-│   │   └── docker
-│   │       └── config.json
-│   ├── extnode1
-│   │   ├── caddy
-│   │   │   └── Caddyfile
-│   │   └── docker
-│   │       └── config.json
-│   └── ...
-└── update_config.py
-</pre>
+-Docker
+-Docker Compose
+-Python 3
 
-- `ansible/`: Contains Ansible inventory and playbooks for deploying the configuration files to the respective servers.
-- `config/`: Contains subfolders for each V2Ray/Xray node with their respective Caddy and V2Ray/Xray configuration files.
-- `update_config.py`: Python script to update the configuration files based on user input.
+## Installation
 
-## Usage
 
-### Step 1: Clone the repository
+### Clone the repository:
 
-Clone this repository to your local machine:
+```bash
+git clone https://github.com/rezar-84/v2ray_bridge.git
+```
+Change to the repository directory:
 
-git clone repository_url
-cd repository_directory
+```bash
 
-### Step 2: Update the configuration files
+cd v2ray_bridge
+```
+Install the required Python packages:
+```bash
 
-Run the update_config.py Python script to create or update the configuration files for a V2Ray/Xray node:
+pip install -r requirements.txt
+```
+Usage
+Run the Python script:
 
+css
 Copy code
-python update_config.py
-Follow the prompts to provide the necessary information.
+python3 new.py
+Follow the prompts to configure your node.
 
-### Step 3: Deploy the configuration using Ansible
-
-Ensure you have Ansible installed on your local machine. Update the inventory.ini file in the ansible/ folder with the server names and IP addresses. Run the Ansible playbooks to deploy the configuration files to the respective servers:
-
-Copy code
-ansible-playbook <playbook_name.yml> -i ansible/inventory.ini
-Step 4: Set up the Docker containers
-SSH into each server and navigate to the directory containing the configuration files. Use Docker Compose or Docker Swarm to set up the containers on each server:
+Once the configuration is complete, a docker-compose.yml file will be created. Start the Docker services:
 
 Copy code
 docker-compose up -d
+Your Xray node is now up and running. You can access it using the generated UUID and other settings.
+
+Simply copy and paste this content into your README.md file, and it will be properly formatted when viewed on GitHub.
